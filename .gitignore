@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+AGENT.md
+AGENTS.md
+PROGRESS.md
+agent.md
+agents.md
+progress.md
+/backend/backend
+.DS_Store
