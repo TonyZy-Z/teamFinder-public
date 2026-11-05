@@ -50,7 +50,7 @@ func GetState(
 		case "match":
 			matchID := membership[1]
 
-			details, err := readPendingMatchScript.Run(
+			details, err := readAssignedMatchScript.Run(
 				ctx, client,
 				[]string{activeKey, "matchmaking:match:" + matchID},
 				matchID,
@@ -64,8 +64,9 @@ func GetState(
 				continue
 			}
 
-			if len(details) != 4 || details[0] != "pending" {
-				return State{}, fmt.Errorf("inconsistent pending-match state")
+			if len(details) != 4 ||
+				(details[0] != "pending" && details[0] != "ready") {
+				return State{}, fmt.Errorf("inconsistent assigned-match state")
 			}
 
 			deadline, err := strconv.ParseInt(details[3], 10, 64)
@@ -74,7 +75,7 @@ func GetState(
 			}
 
 			return State{
-				Status:   "pending",
+				Status:   details[0],
 				GameID:   details[1],
 				MatchID:  details[2],
 				Deadline: deadline,
@@ -104,7 +105,7 @@ end
 return {"idle", ""}
 `)
 
-var readPendingMatchScript = redis.NewScript(`
+var readAssignedMatchScript = redis.NewScript(`
 local expectedMatchID = ARGV[1]
 local userID = ARGV[2]
 
@@ -124,10 +125,11 @@ if fields[4] ~= userID and fields[5] ~= userID then
 	return {"invalid_membership"}
 end
 
-if fields[1] ~= "pending" or not fields[2] or not fields[3] then
+if (fields[1] ~= "pending" and fields[1] ~= "ready") or
+	not fields[2] or not fields[3] then
 	return {"invalid_match"}
 end
 
-return {"pending", fields[2], expectedMatchID, fields[3]}
+return {fields[1], fields[2], expectedMatchID, fields[3]}
 
 `)

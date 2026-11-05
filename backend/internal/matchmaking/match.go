@@ -197,7 +197,7 @@ redis.call("HSET", KEYS[6],
     "deadline", tostring(deadline)
 )
 
--- Register each new pending match in the deadline sorted set
+-- Track when this pending match needs a timeout check
 redis.call("ZADD", KEYS[7], deadline, matchID)
 
 -- Assign both users to it.

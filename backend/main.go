@@ -3,14 +3,19 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/TonyZy-Z/teamFinder/backend/internal/auth"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
+
+	"github.com/TonyZy-Z/teamFinder/backend/internal/auth"
+	"github.com/TonyZy-Z/teamFinder/backend/internal/matchmaking"
+	"github.com/TonyZy-Z/teamFinder/backend/internal/realtime"
 )
 
 func main() {
@@ -80,6 +85,17 @@ func main() {
 	Redis client startup ends
 	**/
 
+	// Ctrl+C or SIGTERM request a clean shutdown
+	workerCtx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	// Share one connection registry across notification handlers
+	connections := realtime.NewConnections()
+
 	/**
 	Handlers registration begins
 	**/
@@ -139,9 +155,69 @@ func main() {
 	)
 
 	/**
+	Confirm match handler
+	**/
+	mux.Handle(
+		"POST /matchmaking/matches/{match_id}/confirm",
+		requireAuth(newConfirmMatchHandler(redisClient)),
+	)
+
+	/**
+	WebSocket handler
+	**/
+	mux.Handle(
+		"GET /ws",
+		requireAuth(newWebSocketHandler(workerCtx, connections)),
+	)
+
+	/**
 	Handlers registration ends
 	**/
 
-	log.Println("Server listening on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	// Start timeout processing and record when it finished
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		matchmaking.RunTimeoutWorker(workerCtx, redisClient)
+	}()
+
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
+	}
+
+	// Run the server while main waits for shutdown or a server error
+	serverErrors := make(chan error, 1)
+	go func() {
+		log.Println("Server listening on http://localhost:8080")
+		serverErrors <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-workerCtx.Done():
+		log.Println("Stopping backend")
+	case err := <-serverErrors:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP server failed: %v", err)
+		}
+	}
+
+	// Stop the worker and allow HTTP requests time to finish
+	stop()
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(
+		context.Background(),
+		5*time.Second,
+	)
+	defer cancelShutdown()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP shutdown failed: %v", err)
+		if err := server.Close(); err != nil {
+			log.Printf("HTTP close failed: %v", err)
+		}
+	}
+
+	// Wait before main returns and its deferred Redis close runs
+	<-workerDone
 }

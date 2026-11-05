@@ -16,6 +16,61 @@ type joinQueueRequest struct {
 	GameID string `json:"game_id"`
 }
 
+// This lets a participant confirm their assigned match
+func newConfirmMatchHandler(client *redis.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := auth.UserIDFromContext(r.Context())
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Read the match ID from the URL, not the request body
+		matchID := r.PathValue("match_id")
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		result, err := matchmaking.ConfirmMatch(ctx, client, matchID, userID)
+
+		if err != nil {
+			log.Printf("Match confirmation failed: %v", err)
+			http.Error(w, "Unable to confirm match", http.StatusInternalServerError)
+			return
+		}
+
+		switch result {
+		case "pending", "ready":
+			// Confirmation succeed
+		case "missing":
+			http.Error(w, "Match not found", http.StatusNotFound)
+			return
+		case "not_assigned_to_match":
+			http.Error(w, "You are not assigned to this match", http.StatusForbidden)
+			return
+		case "deadline_passed":
+			http.Error(w, "Match confirmation deadline has passed", http.StatusConflict)
+			return
+		default:
+			log.Printf("Unexpected confirmation result: %s", result)
+			http.Error(w, "Unable to confirm match", http.StatusInternalServerError)
+			return
+		}
+
+		state, err := matchmaking.GetState(ctx, client, userID)
+		if err != nil {
+			log.Printf("State lookup after confirmation failed: %v", err)
+			http.Error(w, "Unable to retrieve matchmaking status", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(state); err != nil {
+			log.Printf("Confirmation response failed: %v", err)
+		}
+	}
+}
+
 func newMatchmakingStatusHandler(client *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := auth.UserIDFromContext(r.Context())
