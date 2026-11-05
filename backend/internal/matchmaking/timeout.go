@@ -141,7 +141,11 @@ func ExpireMatch(
 }
 
 // It checks up to 100 overdue matches
-func ProcessTimeoutBatch(ctx context.Context, client *redis.Client) error {
+func ProcessTimeoutBatch(
+	ctx context.Context,
+	client *redis.Client,
+	onExpired func(context.Context, string),
+) error {
 	// Use the same Redis clock used to create match deadline
 	now, err := client.Time(ctx).Result()
 	if err != nil {
@@ -174,8 +178,13 @@ func ProcessTimeoutBatch(ctx context.Context, client *redis.Client) error {
 		}
 
 		switch result {
-		case "expired", "finished":
-			// The match was marked expired
+		case "expired":
+			// Redis updates are complete; notify the affected participants
+			if onExpired != nil {
+				onExpired(ctx, matchID)
+			}
+		case "finished":
+			// No new expiration occurred, so no notification is needed
 		case "missing":
 			// Match IDs are never reused; remove this obsolete entry
 			if err := client.ZRem(
@@ -193,7 +202,11 @@ func ProcessTimeoutBatch(ctx context.Context, client *redis.Client) error {
 
 // It checks pending mathc deadlines every second
 // It runs until the caller cancels ctx
-func RunTimeoutWorker(ctx context.Context, client *redis.Client) {
+func RunTimeoutWorker(
+	ctx context.Context,
+	client *redis.Client,
+	onExpired func(context.Context, string),
+) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
@@ -205,7 +218,7 @@ func RunTimeoutWorker(ctx context.Context, client *redis.Client) {
 		case <-ticker.C:
 			//Limit how long one processing round may take
 			batchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			err := ProcessTimeoutBatch(batchCtx, client)
+			err := ProcessTimeoutBatch(batchCtx, client, onExpired)
 			cancel()
 
 			if err != nil && ctx.Err() == nil {

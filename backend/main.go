@@ -135,7 +135,7 @@ func main() {
 	**/
 	mux.Handle(
 		"POST /matchmaking/queue",
-		requireAuth(newJoinQueueHandler(redisClient)),
+		requireAuth(newJoinQueueHandler(redisClient, connections)),
 	)
 
 	/**
@@ -159,7 +159,7 @@ func main() {
 	**/
 	mux.Handle(
 		"POST /matchmaking/matches/{match_id}/confirm",
-		requireAuth(newConfirmMatchHandler(redisClient)),
+		requireAuth(newConfirmMatchHandler(redisClient, connections)),
 	)
 
 	/**
@@ -178,7 +178,14 @@ func main() {
 	workerDone := make(chan struct{})
 	go func() {
 		defer close(workerDone)
-		matchmaking.RunTimeoutWorker(workerCtx, redisClient)
+		matchmaking.RunTimeoutWorker(
+			workerCtx,
+			redisClient,
+			func(ctx context.Context, matchID string) {
+				// The expired hash retains participants IDs for notification
+				notifyMatchParticipants(ctx, redisClient, connections, matchID)
+			},
+		)
 	}()
 
 	server := &http.Server{

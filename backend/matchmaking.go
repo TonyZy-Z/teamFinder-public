@@ -9,6 +9,7 @@ import (
 
 	"github.com/TonyZy-Z/teamFinder/backend/internal/auth"
 	"github.com/TonyZy-Z/teamFinder/backend/internal/matchmaking"
+	"github.com/TonyZy-Z/teamFinder/backend/internal/realtime"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -17,7 +18,10 @@ type joinQueueRequest struct {
 }
 
 // This lets a participant confirm their assigned match
-func newConfirmMatchHandler(client *redis.Client) http.HandlerFunc {
+func newConfirmMatchHandler(
+	client *redis.Client,
+	connections *realtime.Connections,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := auth.UserIDFromContext(r.Context())
 		if !ok {
@@ -67,6 +71,11 @@ func newConfirmMatchHandler(client *redis.Client) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(state); err != nil {
 			log.Printf("Confirmation response failed: %v", err)
+		}
+
+		// Both users should learn when confirmation makes the match ready
+		if result == "ready" {
+			notifyMatchParticipants(ctx, client, connections, matchID)
 		}
 	}
 }
@@ -122,7 +131,10 @@ func newCancelQueueHandler(client *redis.Client) http.HandlerFunc {
 	}
 }
 
-func newJoinQueueHandler(client *redis.Client) http.HandlerFunc {
+func newJoinQueueHandler(
+	client *redis.Client,
+	connections *realtime.Connections,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := auth.UserIDFromContext(r.Context())
 		if !ok {
@@ -159,7 +171,7 @@ func newJoinQueueHandler(client *redis.Client) http.HandlerFunc {
 
 		switch result {
 		case "joined", "already_queued":
-			_, pairErr := matchmaking.TryPair(ctx, client, input.GameID)
+			match, pairErr := matchmaking.TryPair(ctx, client, input.GameID)
 			if pairErr != nil {
 				log.Print("Pairing attempt failed: ", pairErr)
 			}
@@ -175,6 +187,12 @@ func newJoinQueueHandler(client *redis.Client) http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(state); err != nil {
 				log.Print("Queue response failed: ", err)
+			}
+
+			// Notify the actual participants, who may differ from the requester
+			if pairErr == nil && match != nil {
+				notifyMatchmakingState(ctx, client, connections, match.User1)
+				notifyMatchmakingState(ctx, client, connections, match.User2)
 			}
 
 		case "different_game":
