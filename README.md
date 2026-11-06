@@ -35,6 +35,6 @@ The backend is a single service. Redis Lua scripts coordinate related matchmakin
 
 The backend currently supports signup, Argon2id password hashing, JWT login, profile retrieval, game listing, queue entry/cancellation, pairing, confirmation, and automatic timeout/requeue behavior. WebSocket notifications cover pending matches, readiness, and timeout outcomes. These normal flows have been manually verified locally.
 
-**V1 is not finished.** Mobile screens, voice integration, blocking/reporting, and public deployment remain ahead. Password reset is temporarily deferred while I focus on the core matching-to-voice journey. Cancellation notifications and reconnect state synchronization are also pending.
+**V1 is not finished.** Mobile screens, voice integration, blocking/reporting, and public deployment remain ahead. Password reset is temporarily deferred while I focus on the core matching-to-voice journey. Cancellation notifications and reconnect snapshots for idle/searching states have been manually verified.
 
 Development currently runs locally with the Go backend on the host and PostgreSQL/Redis in Docker Compose.

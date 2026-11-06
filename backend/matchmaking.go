@@ -105,7 +105,10 @@ func newMatchmakingStatusHandler(client *redis.Client) http.HandlerFunc {
 	}
 }
 
-func newCancelQueueHandler(client *redis.Client) http.HandlerFunc {
+func newCancelQueueHandler(
+	client *redis.Client,
+	connections *realtime.Connections,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := auth.UserIDFromContext(r.Context())
 		if !ok {
@@ -128,6 +131,9 @@ func newCancelQueueHandler(client *redis.Client) http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+
+		// Notify this user of their actual state after cancellation
+		notifyMatchmakingState(ctx, client, connections, userID)
 	}
 }
 

@@ -36,6 +36,17 @@ func main() {
 		log.Fatal("JWT_SECRET must contain at least 64 characters")
 	}
 
+	// Load the LiveKit project settings from the environment
+	livekitURL := os.Getenv("LIVEKIT_URL")
+	livekitAPIKey := os.Getenv("LIVEKIT_API_KEY")
+	livekitAPISecret := os.Getenv("LIVEKIT_API_SECRET")
+
+	if livekitURL == "" || livekitAPIKey == "" || livekitAPISecret == "" {
+		log.Fatal("LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET are required")
+	}
+
+	log.Println("LiveKit configuration loaded")
+
 	// database set up
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -143,7 +154,7 @@ func main() {
 	**/
 	mux.Handle(
 		"DELETE /matchmaking/queue",
-		requireAuth(newCancelQueueHandler(redisClient)),
+		requireAuth(newCancelQueueHandler(redisClient, connections)),
 	)
 
 	/**
@@ -167,7 +178,20 @@ func main() {
 	**/
 	mux.Handle(
 		"GET /ws",
-		requireAuth(newWebSocketHandler(workerCtx, connections)),
+		requireAuth(newWebSocketHandler(workerCtx, connections, redisClient)),
+	)
+
+	/**
+	Voice room token request handler
+	**/
+	mux.Handle(
+		"POST /voice/token",
+		requireAuth(newVoiceTokenHandler(
+			redisClient,
+			livekitURL,
+			livekitAPIKey,
+			livekitAPISecret,
+		)),
 	)
 
 	/**

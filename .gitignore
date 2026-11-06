@@ -1,11 +1,13 @@
 .env
 .env.*
 !.env.example
-AGENT.md
-AGENTS.md
-PROGRESS.md
-agent.md
-agents.md
-progress.md
+/MANUAL_TESTING.md
+
+# Keep personal project notes and generated files out of the public repository.
+[aA][gG][eE][nN][tT].[mM][dD]
+[aA][gG][eE][nN][tT][sS].[mM][dD]
+[pP][rR][oO][gG][rR][eE][sS][sS].[mM][dD]
 /backend/backend
-.DS_Store
+.agents/
+.codex/
+.aws/
