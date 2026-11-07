@@ -16,6 +16,7 @@ import (
 	"github.com/TonyZy-Z/teamFinder/backend/internal/auth"
 	"github.com/TonyZy-Z/teamFinder/backend/internal/matchmaking"
 	"github.com/TonyZy-Z/teamFinder/backend/internal/realtime"
+	lksdk "github.com/livekit/server-sdk-go/v2"
 )
 
 func main() {
@@ -46,6 +47,13 @@ func main() {
 	}
 
 	log.Println("LiveKit configuration loaded")
+
+	// Use our credentials for LiveKit room management requests
+	roomClient := lksdk.NewRoomServiceClient(
+		livekitURL,
+		livekitAPIKey,
+		livekitAPISecret,
+	)
 
 	// database set up
 	databaseURL := os.Getenv("DATABASE_URL")
@@ -191,6 +199,18 @@ func main() {
 			livekitURL,
 			livekitAPIKey,
 			livekitAPISecret,
+		)),
+	)
+
+	/**
+	Leave voice room handler
+	**/
+	mux.Handle(
+		"POST /matchmaking/matches/{match_id}/leave",
+		requireAuth(newLeaveMatchHandler(
+			redisClient,
+			roomClient,
+			connections,
 		)),
 	)
 

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>TeamFinder voice test</title>
+</head>
+<body>
+  <h1>TeamFinder voice test</h1>
+
+  <p>
+    <label>
+      LiveKit URL:
+      <input id="server-url" type="text" placeholder="wss://your-project.livekit.cloud">
+    </label>
+  </p>
+
+  <p>
+    <label>
+      LiveKit access token:
+      <textarea id="access-token" rows="4" cols="60"></textarea>
+    </label>
+  </p>
+
+  <button id="connect">Connect</button>
+  <button id="disconnect" disabled>Disconnect</button>
+  <button id="enable-audio" disabled>Enable microphone and audio</button>
+
+  <div id="remote-audio"></div>
+
+  <pre id="status">Not connected</pre>
+
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.23.0/dist/livekit-client.umd.min.js"></script>
+
+  <script>
+    const room = new LivekitClient.Room();
+
+    const urlInput = document.getElementById("server-url");
+    const tokenInput = document.getElementById("access-token");
+    const connectButton = document.getElementById("connect");
+    const disconnectButton = document.getElementById("disconnect");
+    const status = document.getElementById("status");
+    const audioButton = document.getElementById("enable-audio");
+    const remoteAudio = document.getElementById("remote-audio");
+
+    // Play audio received from the other participant.
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === LivekitClient.Track.Kind.Audio) {
+        const audioElement = track.attach();
+        audioElement.controls = true;
+        remoteAudio.appendChild(audioElement);
+      }
+    });
+
+    // Remove the player when that audio track is no longer subscribed.
+    room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
+      track.detach().forEach((element) => element.remove());
+    });
+
+    connectButton.onclick = async () => {
+      connectButton.disabled = true;
+      status.textContent = "Connecting...";
+
+      try {
+        // Use the URL and token returned by our Go backend.
+        await room.connect(
+          urlInput.value.trim(),
+          tokenInput.value.trim()
+        );
+
+        status.textContent =
+          `Connected to room: ${room.name}\n` +
+          `Your user ID: ${room.localParticipant.identity}`;
+
+        tokenInput.value = "";
+        disconnectButton.disabled = false;
+        audioButton.disabled = false;
+      } catch (error) {
+        status.textContent = `Connection failed: ${error.message}`;
+        connectButton.disabled = false;
+      }
+    };
+
+    audioButton.onclick = async () => {
+      audioButton.disabled = true;
+
+      try {
+        // Allow browser playback and publish our microphone audio.
+        await room.startAudio();
+        await room.localParticipant.setMicrophoneEnabled(true);
+        audioButton.textContent = "Microphone enabled";
+      } catch (error) {
+        status.textContent = `Audio failed: ${error.message}`;
+        audioButton.disabled = false;
+      }
+    };
+
+    disconnectButton.onclick = async () => {
+      await room.disconnect();
+    };
+
+    // Update the page after leaving or losing the connection.
+    room.on(LivekitClient.RoomEvent.Disconnected, () => {
+      status.textContent = "Disconnected";
+      connectButton.disabled = false;
+      disconnectButton.disabled = true;
+      audioButton.disabled = true;
+      audioButton.textContent = "Enable microphone and audio";
+      remoteAudio.replaceChildren();
+    });
+  </script>
+</body>
+</html>
