@@ -3,7 +3,7 @@
 !.env.example
 /MANUAL_TESTING.md
 
-# Keep personal project notes and generated files out of the public repository.
+# Private notes, local tooling, and generated files.
 [aA][gG][eE][nN][tT].[mM][dD]
 [aA][gG][eE][nN][tT][sS].[mM][dD]
 [pP][rR][oO][gG][rR][eE][sS][sS].[mM][dD]
@@ -11,3 +11,6 @@
 .agents/
 .codex/
 .aws/
+.claude/
+node_modules/
+.expo/
